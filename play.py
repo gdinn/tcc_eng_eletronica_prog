@@ -1,5 +1,5 @@
 from pylab import *
-
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.mlab import psd
@@ -9,27 +9,25 @@ import math
 import SoapySDR as sp
 
 sample_rate = 1e6
-center_freq = 92.1e6
-nsamples = 1024
+# center_freq = 92.1e6
+center_freq = 92.9e6
 gain = 1
+debug = 0
 
 def fazer_aquisicao(sdr, rxStream):
     sdr.activateStream(rxStream) #start streaming
-    print("[DONE]activateStream")    
+    if debug:
+        print("[DONE]activateStream")    
     _samples = np.array([0]*max_nsamples, np.complex64)
     samples = np.array([], np.complex64)
-    mperdidas = 0;
-    for j in range(rodadas):        
-        for i in range(20):
-            sr = sdr.readStream(rxStream, [_samples], len(_samples))
-            if sr.ret > 0:                
-                break
-            if i == 19:
-                mperdidas = mperdidas + 1
-                print("[ERROR]readStream", sr.ret)
-                print("[INFO]", mperdidas, "/", rodadas, "medidas perdidas")
-                break
-        samples = np.concatenate([samples, _samples])
+    end = 0
+    start = time.process_time()
+    while(end-start < measurement_time):     
+        sr = sdr.readStream(rxStream, [_samples], len(_samples))
+        if sr.ret > 0:                
+            samples = np.concatenate([samples, _samples])
+        end = time.process_time()
+    #print("\nTempo de aquisição: %.3fms" % ((end-start)*1e3))
     sdr.deactivateStream(rxStream) #stop streaming
     return samples
 
@@ -61,7 +59,6 @@ def obter_magnitude_sem_ganho(mag, ganho):
     return 20*np.log10(amp)
 
 
-
 args = dict(driver="sdrplay")
 sdr = sp.Device(args)
 rx_chan = 0
@@ -70,21 +67,27 @@ sdr.setSampleRate(sp.SOAPY_SDR_RX, rx_chan, sample_rate)
 sdr.setFrequency(sp.SOAPY_SDR_RX, rx_chan, center_freq)
 sdr.setGainMode(sp.SOAPY_SDR_RX, rx_chan, False) # turn off AGC
 sdr.setGain(sp.SOAPY_SDR_RX, rx_chan, gain)
-max_nsamples = 32256
-rodadas = 1
-if nsamples > max_nsamples:
-    rodadas = math.ceil(nsamples/max_nsamples)
-print("[INFO]Para", nsamples, "serão feitas", rodadas, "medidas")
-rxStream = sdr.setupStream(sp.SOAPY_SDR_RX, sp.SOAPY_SDR_CF32)
-print("faxa de ganho")
-print(sdr.getGainRange(sp.SOAPY_SDR_RX, rx_chan))
-print("[DONE]setup")
+# max_nsamples = 32256
+max_nsamples = 128
+measurement_time = 1000e-3
+avg_time = 100e-3
+n_ensaios = 10
 
+n_medidas_avg = int(measurement_time/avg_time)
+
+rxStream = sdr.setupStream(sp.SOAPY_SDR_RX, sp.SOAPY_SDR_CF32)
+
+if debug:
+    print("faxa de ganho")
+    print(sdr.getGainRange(sp.SOAPY_SDR_RX, rx_chan))
+    print("[DONE]setup")
 
 magnitudes = []
 frequencies = []
 
-for i in range(10):
+print("meas_time %ds 10 rodadas" % measurement_time)
+print("------------------------------")
+for i in range(n_ensaios):
   samples = fazer_aquisicao(
     sdr=sdr,
     rxStream=rxStream
@@ -98,16 +101,45 @@ for i in range(10):
   magnitudes.append(mag)
   frequencies.append(freq)
   print("Na frequência", freq, "a magnitude é de", mag, "dB")
+
+
+print("------------------------------\n")
+print("meas_time %fs 10*avg10 rodadas" % measurement_time)
+print("------------------------------")
+_measurement_time = measurement_time
+measurement_time = avg_time
+for i in range(n_ensaios):
+    mag2 = []
+    freq2 = []
+    for j in range(n_medidas_avg):
+        samples = fazer_aquisicao(
+            sdr=sdr,
+            rxStream=rxStream
+        )
+        freq, mag = obter_magnitude(
+            freq = center_freq,
+            samples = samples,
+            sample_rate = sample_rate,
+            center_freq = center_freq
+        )
+        mag2.append(mag)
+        freq2.append(freq)
+    mag = sum(mag2) / len(mag2)
+    magnitudes.append(mag)
+    print("Na frequência", freq, "a magnitude é de", mag, "dB")
+measurement_time = _measurement_time
+
 sdr.closeStream(rxStream)
 sleep(1)
-print("[DONE]fechou")
+if debug:
+    print("[DONE]fechou")
 
-frequencies_str = ', '.join([str(elem) for elem in frequencies])
-f = open("frequencies_play.txt", "w")
-f.write(frequencies_str)
-f.close()
+# frequencies_str = ', '.join([str(elem) for elem in frequencies])
+# f = open("frequencies_play.txt", "w")
+# f.write(frequencies_str)
+# f.close()
 
-magnitudes_str = ', '.join([str(elem) for elem in magnitudes])
-f = open("magnitudes_play.txt", "w")
-f.write(magnitudes_str)
-f.close()
+# magnitudes_str = ', '.join([str(elem) for elem in magnitudes])
+# f = open("magnitudes_play.txt", "w")
+# f.write(magnitudes_str)
+# f.close()
