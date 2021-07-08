@@ -15,9 +15,6 @@ gain = 1
 debug = 0
 
 def fazer_aquisicao(sdr, rxStream):
-    sdr.activateStream(rxStream) #start streaming
-    if debug:
-        print("[DONE]activateStream")    
     _samples = np.array([0]*max_nsamples, np.complex64)
     samples = np.array([], np.complex64)
     end = 0
@@ -28,7 +25,6 @@ def fazer_aquisicao(sdr, rxStream):
             samples = np.concatenate([samples, _samples])
         end = time.process_time()
     #print("\nTempo de aquisição: %.3fms" % ((end-start)*1e3))
-    sdr.deactivateStream(rxStream) #stop streaming
     return samples
 
 def obter_magnitude(freq, samples, sample_rate, center_freq):
@@ -70,10 +66,7 @@ sdr.setGain(sp.SOAPY_SDR_RX, rx_chan, gain)
 # max_nsamples = 32256
 max_nsamples = 128
 measurement_time = 1000e-3
-avg_time = 100e-3
 n_ensaios = 10
-
-n_medidas_avg = int(measurement_time/avg_time)
 
 rxStream = sdr.setupStream(sp.SOAPY_SDR_RX, sp.SOAPY_SDR_CF32)
 
@@ -84,17 +77,27 @@ if debug:
 
 magnitudes = []
 frequencies = []
+samples = [[0]]*n_ensaios
 
-print("meas_time %ds 10 rodadas" % measurement_time)
-print("------------------------------")
+sdr.activateStream(rxStream) #start streaming
+print("aquisição meas_time %ds %d rodadas" % (measurement_time, n_ensaios)) 
 for i in range(n_ensaios):
-  samples = fazer_aquisicao(
+  samples[i] = fazer_aquisicao(
     sdr=sdr,
     rxStream=rxStream
   )
+print("aquisição terminou")
+sdr.deactivateStream(rxStream) #stop streaming
+sleep(1)
+sdr.closeStream(rxStream)
+
+medidas_ensaio = 1
+print("\n%d ensaios, meas_time=%fs (%d medidas/ensaio)" % (n_ensaios, measurement_time, medidas_ensaio))
+print("------------------------------")
+for i in range(n_ensaios):
   freq, mag = obter_magnitude(
       freq = center_freq,
-      samples = samples,
+      samples = samples[i],
       sample_rate = sample_rate,
       center_freq = center_freq
   )
@@ -102,37 +105,29 @@ for i in range(n_ensaios):
   frequencies.append(freq)
   print("Na frequência", freq, "a magnitude é de", mag, "dB")
 
-
+medidas_ensaio = 10
 print("------------------------------\n")
-print("meas_time %fs 10*avg10 rodadas" % measurement_time)
+print("%d ensaios, meas_time=%fs (%d medidas/ensaio)" % (n_ensaios, measurement_time, medidas_ensaio))
 print("------------------------------")
-_measurement_time = measurement_time
-measurement_time = avg_time
 for i in range(n_ensaios):
     mag2 = []
-    freq2 = []
-    for j in range(n_medidas_avg):
-        samples = fazer_aquisicao(
-            sdr=sdr,
-            rxStream=rxStream
-        )
+    freq2 = []    
+    tamanho_pedaço = math.floor(len(samples[i])/medidas_ensaio)
+    for j in range(medidas_ensaio):
+        inicio_samples = j*tamanho_pedaço
+        fim_samples = (j+1)*tamanho_pedaço - 1
+        _samples = samples[i][inicio_samples:fim_samples]
         freq, mag = obter_magnitude(
             freq = center_freq,
-            samples = samples,
+            samples = _samples,
             sample_rate = sample_rate,
             center_freq = center_freq
         )
         mag2.append(mag)
-        freq2.append(freq)
+        freq2.append(freq)        
     mag = sum(mag2) / len(mag2)
     magnitudes.append(mag)
     print("Na frequência", freq, "a magnitude é de", mag, "dB")
-measurement_time = _measurement_time
-
-sdr.closeStream(rxStream)
-sleep(1)
-if debug:
-    print("[DONE]fechou")
 
 # frequencies_str = ', '.join([str(elem) for elem in frequencies])
 # f = open("frequencies_play.txt", "w")
