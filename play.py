@@ -1,3 +1,8 @@
+#bom q tem ganho no SDR
+# pode ser q o play tenha uma curva diferente e por isso a medida em menor freq esta com menor magnitude
+
+# verificar medida em baixa frequencia
+
 from pylab import *
 import time
 import numpy as np
@@ -5,13 +10,12 @@ import matplotlib.pyplot as plt
 from matplotlib.mlab import psd
 import control
 from time import sleep
-import math
 import SoapySDR as sp
 
-sample_rate = 1e6
-# center_freq = 92.1e6
-center_freq = 92.9e6
-gain = 1
+medir_freq = 50e3 #min value = 10e3 // max value = 1.7e9
+n_ensaios = 1
+
+gain = 10
 debug = 0
 
 def fazer_aquisicao(sdr, rxStream):
@@ -28,12 +32,6 @@ def fazer_aquisicao(sdr, rxStream):
     return samples
 
 def obter_magnitude(freq, samples, sample_rate, center_freq):
-    if sample_rate < 1e6:
-        print("sample_rate precisa ser maior igual a 1e6")
-        return
-    if center_freq < 1e6:
-        print("center_freq precisa ser maior igual a 1e6")
-        return
     sample_rate = sample_rate/1e6
     center_freq = center_freq/1e6
     freq = freq/1e6
@@ -50,23 +48,37 @@ def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return idx
 
-def obter_magnitude_sem_ganho(mag, ganho):
-    amp = control.db2mag(mag)/ganho
-    return 20*np.log10(amp)
+def fazer_grafico(freq, samples, sample_rate, center_freq):
+    NFFT = 1024
+    plt.figure() 
+    
+    axes = plt.psd(samples, NFFT=NFFT, Fs=sample_rate/1e6, Fc=center_freq/1e6, zorder=10, color='crimson')
+    x = np.ones(len(axes[0]))*freq/1e6
+    dx = (((sample_rate)/1e6)/2)/25
+    plt.plot(x+dx, 10*np.log10(axes[0]), color='pink', linestyle='dashed', zorder=5)
+    plt.plot(x-dx, 10*np.log10(axes[0]), color='pink', linestyle='dashed', zorder=5)
 
+
+    xlabel('Frequency (MHz)')
+    ylabel('Relative power (dB)') 
+    
+    plt.savefig("psd.png")
+
+sample_rate = 500e3
+gain = 42 - gain
+center_freq = medir_freq + sample_rate/10
 
 args = dict(driver="sdrplay")
 sdr = sp.Device(args)
 rx_chan = 0
-gain = 42 - gain
 sdr.setSampleRate(sp.SOAPY_SDR_RX, rx_chan, sample_rate)
 sdr.setFrequency(sp.SOAPY_SDR_RX, rx_chan, center_freq)
-sdr.setGainMode(sp.SOAPY_SDR_RX, rx_chan, False) # turn off AGC
+sdr.setGainMode(sp.SOAPY_SDR_RX, rx_chan, False) # turn off AGC (automatic gain control)
 sdr.setGain(sp.SOAPY_SDR_RX, rx_chan, gain)
-# max_nsamples = 32256
+# max_nsamples = 32256 # absolute max value
 max_nsamples = 128
 measurement_time = 1000e-3
-n_ensaios = 10
+
 
 rxStream = sdr.setupStream(sp.SOAPY_SDR_RX, sp.SOAPY_SDR_CF32)
 
@@ -80,8 +92,9 @@ frequencies = []
 samples = [[0]]*n_ensaios
 
 sdr.activateStream(rxStream) #start streaming
-print("aquisição meas_time %ds %d rodadas" % (measurement_time, n_ensaios)) 
+print("aquisição %ds * %d ensaios" % (measurement_time, n_ensaios)) 
 for i in range(n_ensaios):
+  samples[i] = samples[i] - np.mean(samples[i])
   samples[i] = fazer_aquisicao(
     sdr=sdr,
     rxStream=rxStream
@@ -92,42 +105,27 @@ sleep(1)
 sdr.closeStream(rxStream)
 
 medidas_ensaio = 1
-print("\n%d ensaios, meas_time=%fs (%d medidas/ensaio)" % (n_ensaios, measurement_time, medidas_ensaio))
+print("\n%d ensaios, aquisição=%fs (%d PSDs/medida)" % (n_ensaios, measurement_time, medidas_ensaio))
 print("------------------------------")
 for i in range(n_ensaios):
-  freq, mag = obter_magnitude(
-      freq = center_freq,
-      samples = samples[i],
-      sample_rate = sample_rate,
-      center_freq = center_freq
-  )
-  magnitudes.append(mag)
-  frequencies.append(freq)
-  print("Na frequência", freq, "a magnitude é de", mag, "dB")
+    samples[i] = samples[i] - np.mean(samples[i])
+    freq, mag = obter_magnitude(
+		freq = medir_freq,
+		samples = samples[i],
+		sample_rate = sample_rate,
+		center_freq = center_freq
+	)
 
-medidas_ensaio = 10
-print("------------------------------\n")
-print("%d ensaios, meas_time=%fs (%d medidas/ensaio)" % (n_ensaios, measurement_time, medidas_ensaio))
-print("------------------------------")
-for i in range(n_ensaios):
-    mag2 = []
-    freq2 = []    
-    tamanho_pedaço = math.floor(len(samples[i])/medidas_ensaio)
-    for j in range(medidas_ensaio):
-        inicio_samples = j*tamanho_pedaço
-        fim_samples = (j+1)*tamanho_pedaço - 1
-        _samples = samples[i][inicio_samples:fim_samples]
-        freq, mag = obter_magnitude(
-            freq = center_freq,
-            samples = _samples,
-            sample_rate = sample_rate,
-            center_freq = center_freq
-        )
-        mag2.append(mag)
-        freq2.append(freq)        
-    mag = sum(mag2) / len(mag2)
     magnitudes.append(mag)
+    frequencies.append(freq)
     print("Na frequência", freq, "a magnitude é de", mag, "dB")
+
+fazer_grafico(
+    freq = medir_freq,
+    samples = samples[0],
+    sample_rate = sample_rate,
+    center_freq = center_freq      
+)
 
 # frequencies_str = ', '.join([str(elem) for elem in frequencies])
 # f = open("frequencies_play.txt", "w")
