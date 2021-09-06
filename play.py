@@ -1,3 +1,6 @@
+#medir
+# 50k, 100k, 200k ... 1M, 5M, 10M, 15M, 25M
+
 #bom q tem ganho no SDR
 # pode ser q o play tenha uma curva diferente e por isso a medida em menor freq esta com menor magnitude
 
@@ -12,10 +15,10 @@ import control
 from time import sleep
 import SoapySDR as sp
 
-medir_freq = 50e3 #min value = 10e3 // max value = 1.7e9
+medir_freq = 25e6 #min value = 10e3 // max value = 1.7e9
 n_ensaios = 1
 
-gain = 10
+gain = 0
 debug = 0
 
 def fazer_aquisicao(sdr, rxStream):
@@ -94,7 +97,6 @@ samples = [[0]]*n_ensaios
 sdr.activateStream(rxStream) #start streaming
 print("aquisição %ds * %d ensaios" % (measurement_time, n_ensaios)) 
 for i in range(n_ensaios):
-  samples[i] = samples[i] - np.mean(samples[i])
   samples[i] = fazer_aquisicao(
     sdr=sdr,
     rxStream=rxStream
@@ -108,7 +110,7 @@ medidas_ensaio = 1
 print("\n%d ensaios, aquisição=%fs (%d PSDs/medida)" % (n_ensaios, measurement_time, medidas_ensaio))
 print("------------------------------")
 for i in range(n_ensaios):
-    samples[i] = samples[i] - np.mean(samples[i])
+    #samples[i] = samples[i] - np.mean(samples[i])
     freq, mag = obter_magnitude(
 		freq = medir_freq,
 		samples = samples[i],
@@ -127,12 +129,12 @@ fazer_grafico(
     center_freq = center_freq      
 )
 
-# frequencies_str = ', '.join([str(elem) for elem in frequencies])
-# f = open("frequencies_play.txt", "w")
-# f.write(frequencies_str)
-# f.close()
+frequencies_str = ', '.join([str(elem) for elem in frequencies])
+f = open("frequencies_play.txt", "w")
+f.write(frequencies_str)
+f.close()
 
-# magnitudes_str = ', '.join([str(elem) for elem in magnitudes])
-# f = open("magnitudes_play.txt", "w")
-# f.write(magnitudes_str)
-# f.close()
+magnitudes_str = ', '.join([str(elem) for elem in magnitudes])
+f = open("magnitudes_play.txt", "w")
+f.write(magnitudes_str)
+f.close()

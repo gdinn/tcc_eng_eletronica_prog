@@ -6,7 +6,7 @@ from matplotlib.mlab import psd
 import control
 
 sample_rate = 1e6
-measure_freq = 500e3 # min value = 500e3 // max value = 1,7e9
+measure_freq = 92.1e6 # min value = 500e3 // max value = 1,7e9
 center_freq = measure_freq + 100e3
 freq_correction = 60
 gain = 10
@@ -54,7 +54,7 @@ sdr = RtlSdr()
 sdr.sample_rate = sample_rate
 sdr.center_freq = center_freq
 sdr.freq_correction = freq_correction
-sdr.set_direct_sampling('q')
+# sdr.set_direct_sampling('q')
 sdr.gain = gain
 
 magnitudes = []
@@ -83,12 +83,12 @@ for i in range(1):
   print("Na frequência", freq, "a magnitude é de", mag, "dB")
 sdr.close()
 
-# frequencies_str = ', '.join([str(elem) for elem in frequencies])
-# f = open("frequencies_rtl.txt", "w")
-# f.write(frequencies_str)
-# f.close()
+frequencies_str = ', '.join([str(elem) for elem in frequencies])
+f = open("frequencies_rtl.txt", "w")
+f.write(frequencies_str)
+f.close()
 
-# magnitudes_str = ', '.join([str(elem) for elem in magnitudes])
-# f = open("magnitudes_rtl.txt", "w")
-# f.write(magnitudes_str)
-# f.close()
+magnitudes_str = ', '.join([str(elem) for elem in magnitudes])
+f = open("magnitudes_rtl.txt", "w")
+f.write(magnitudes_str)
+f.close()
